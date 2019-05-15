@@ -31,6 +31,9 @@ const PreSaleSTOFactory = artifacts.require("./PreSaleSTOFactory.sol");
 const PolyToken = artifacts.require("./PolyToken.sol");
 const PolyTokenFaucet = artifacts.require("./PolyTokenFaucet.sol");
 const DummySTOFactory = artifacts.require("./DummySTOFactory.sol");
+
+const ActusSTOFactory = artifacts.require("./ActusSTOFactory.sol");
+
 const MockBurnFactory = artifacts.require("./MockBurnFactory.sol");
 const MockWrongTypeFactory = artifacts.require("./MockWrongTypeFactory.sol");
 const VolumeRestrictionTMFactory = artifacts.require("./VolumeRestrictionTMFactory.sol");
@@ -71,6 +74,9 @@ let I_SecurityTokenRegistry;
 let I_CappedSTOFactory;
 let I_SecurityToken;
 let I_DummySTOFactory;
+
+let I_ActusSTOFactory;
+
 let I_PolyToken;
 let I_STFactory;
 let I_USDTieredSTOLogic;
@@ -342,6 +348,18 @@ export async function deployGPMAndVerifyed(accountPolymath, MRProxyInstance, pol
 
 
 /// Deploy the STO Modules
+
+export async function deployActusSTOAndVerifyed(accountPolymath, MRProxyInstance, polyToken, setupCost) {
+    I_ActusSTOFactory = await ActusSTOFactory.new(polyToken, setupCost, 0, 0, { from: accountPolymath });
+    assert.notEqual(
+        I_ActusSTOFactory.address.valueOf(),
+        "0x0000000000000000000000000000000000000000",
+        "ActusSTOFactory contract was not deployed"
+    );
+
+    await registerAndVerifyByMR(I_ActusSTOFactory.address, accountPolymath, MRProxyInstance);
+    return new Array(I_ActusSTOFactory);
+}
 
 export async function deployDummySTOAndVerifyed(accountPolymath, MRProxyInstance, polyToken, setupCost) {
     I_DummySTOFactory = await DummySTOFactory.new(polyToken, setupCost, 0, 0, { from: accountPolymath });

@@ -16,6 +16,7 @@ const VestingEscrowWalletLogic = artifacts.require('./VestingEscrowWallet.sol');
 const ModuleRegistry = artifacts.require('./ModuleRegistry.sol');
 const ModuleRegistryProxy = artifacts.require('./ModuleRegistryProxy.sol');
 const ManualApprovalTransferManagerFactory = artifacts.require('./ManualApprovalTransferManagerFactory.sol')
+const ActusSTOFactory = artifacts.require('./ActusSTOFactory.sol')
 const CappedSTOFactory = artifacts.require('./CappedSTOFactory.sol')
 const USDTieredSTOFactory = artifacts.require('./USDTieredSTOFactory.sol')
 const SecurityTokenRegistry = artifacts.require('./SecurityTokenRegistry.sol')
@@ -31,9 +32,10 @@ const VolumeRestrictionLib = artifacts.require('./VolumeRestrictionLib.sol');
 const SecurityToken = artifacts.require('./tokens/SecurityToken.sol')
 
 let BigNumber = require('bignumber.js');
-const cappedSTOSetupCost = new BigNumber(20000).times(new BigNumber(10).pow(18));   // 20K POLY fee
-const usdTieredSTOSetupCost = new BigNumber(100000).times(new BigNumber(10).pow(18));   // 100K POLY fee
-const initRegFee = new BigNumber(250).times(new BigNumber(10).pow(18));      // 250 POLY fee for registering ticker or security token in registry
+const cappedSTOSetupCost = new BigNumber(20000).times(new BigNumber(10).pow(18)); // 20K POLY fee
+const usdTieredSTOSetupCost = new BigNumber(100000).times(new BigNumber(10).pow(18)); // 100K POLY fee
+const actusSTOSetupCost = new BigNumber(20000).times(new BigNumber(10).pow(18)); // 20K POLY fee
+const initRegFee = new BigNumber(250).times(new BigNumber(10).pow(18)); // 250 POLY fee for registering ticker or security token in registry
 let PolyToken;
 let UsdToken;
 let ETHOracle;
@@ -66,7 +68,6 @@ module.exports = function (deployer, network, accounts) {
         ETHOracle = mockedOracle.address;
       });
     });
-
   } else if (network === 'kovan') {
     web3 = new Web3(new Web3.providers.HttpProvider('https://kovan.infura.io/g5xfoQ0jFSE9S5LwM1Ei'))
     PolymathAccount = accounts[0]
@@ -144,7 +145,6 @@ module.exports = function (deployer, network, accounts) {
   }).then(() => {
     return deployer.deploy(VolumeRestrictionLib, { from: PolymathAccount });
   }).then(() => {
-
     // Link libraries
     deployer.link(VolumeRestrictionLib, VolumeRestrictionTMLogic);
     deployer.link(TokenLib, SecurityToken);
@@ -375,6 +375,18 @@ module.exports = function (deployer, network, accounts) {
     // Here it gets verified because it is deployed by the third party account (Polymath Account) not with the issuer accounts.
     return moduleRegistry.verifyModule(USDTieredSTOFactory.address, true, { from: PolymathAccount })
   }).then(() => {
+    // M) Deploy the ActusSTOFactory (Use to generate the ActusSTO contract which will used to collect the funds ).
+    return deployer.deploy(ActusSTOFactory, PolyToken, actusSTOSetupCost, 0, 0, { from: PolymathAccount })
+  }).then(() => {
+    // N) Register the ActusSTOFactory in the ModuleRegistry to make the factory available at the protocol level.
+    // So any securityToken can use that factory to generate the ActusSTOFactory contract.
+    return moduleRegistry.registerModule(ActusSTOFactory.address, { from: PolymathAccount })
+  }).then(() => {
+    // G) Once the ActusSTOFactory registered with the ModuleRegistry contract then for making them accessble to the securityToken
+    // contract, Factory should comes under the verified list of factories or those factories deployed by the securityToken issuers only.
+    // Here it gets verified because it is deployed by the third party account (Polymath Account) not with the issuer accounts.
+    return moduleRegistry.verifyModule(ActusSTOFactory.address, true, { from: PolymathAccount })
+  }).then(() => {
     return polymathRegistry.changeAddress("PolyUsdOracle", POLYOracle, { from: PolymathAccount });
   }).then(() => {
     return polymathRegistry.changeAddress("EthUsdOracle", ETHOracle, { from: PolymathAccount });
@@ -400,6 +412,7 @@ module.exports = function (deployer, network, accounts) {
     CappedSTOFactory:                     ${CappedSTOFactory.address}
     USDTieredSTOFactory:                  ${USDTieredSTOFactory.address}
     USDTieredSTOLogic:                    ${USDTieredSTOLogic.address}
+    ActusSTOFactory:                      ${ActusSTOFactory.address}
 
     CountTransferManagerFactory:          ${CountTransferManagerFactory.address}
     PercentageTransferManagerFactory:     ${PercentageTransferManagerFactory.address}

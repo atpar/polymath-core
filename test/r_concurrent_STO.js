@@ -6,14 +6,15 @@ import {
     setUpPolymathNetwork,
     deployDummySTOAndVerifyed,
     deployCappedSTOAndVerifyed,
-    deployPresaleSTOAndVerified
+    deployPresaleSTOAndVerified,
+    deployActusSTOAndVerifyed
     } from "./helpers/createInstances";
-
 
 // Import contract ABIs
 const CappedSTO = artifacts.require("./CappedSTO.sol");
 const DummySTO = artifacts.require("./DummySTO.sol");
 const PreSaleSTO = artifacts.require("./PreSaleSTO.sol");
+const ActusSTO = artifacts.require("./ActusSTO.sol");
 const SecurityToken = artifacts.require("./SecurityToken.sol");
 const GeneralTransferManager = artifacts.require("./GeneralTransferManager");
 
@@ -47,6 +48,7 @@ contract("Concurrent STO", accounts => {
     let I_PolymathRegistry;
 
     // STO instance declaration
+    let I_ActusSTOFactory;
     let I_CappedSTOFactory;
     let I_DummySTOFactory;
     let I_PreSaleSTOFactory;
@@ -68,6 +70,7 @@ contract("Concurrent STO", accounts => {
     const CappedSTOParameters = ["uint256", "uint256", "uint256", "uint256", "uint8[]", "address"];
     const DummySTOParameters = ["uint256", "uint256", "uint256", "string"];
     const PresaleSTOParameters = ["uint256"];
+    const ActusSTOParameters = ["uint256", "uint256", "uint256", "uint256", "uint8[]"];
 
     before(async () => {
         // Accounts setup
@@ -100,6 +103,7 @@ contract("Concurrent STO", accounts => {
         [I_CappedSTOFactory] = await deployCappedSTOAndVerifyed(account_polymath, I_MRProxied, I_PolyToken.address, STOSetupCost);
         [I_DummySTOFactory] = await deployDummySTOAndVerifyed(account_polymath, I_MRProxied, I_PolyToken.address, STOSetupCost);
         [I_PreSaleSTOFactory] = await deployPresaleSTOAndVerified(account_polymath, I_MRProxied, I_PolyToken.address, STOSetupCost);
+        [I_ActusSTOFactory] = await deployActusSTOAndVerifyed(account_polymath, I_MRProxied, I_PolyToken.address, STOSetupCost);
 
         // Printing all the contract addresses
         console.log(`
@@ -115,6 +119,7 @@ contract("Concurrent STO", accounts => {
         GeneralTransferManagerFactory:     ${I_GeneralTransferManagerFactory.address}
 
         CappedSTOFactory:                  ${I_CappedSTOFactory.address}
+        ActusSTOFactory:                   ${I_ActusSTOFactory.address}
         -----------------------------------------------------------------------------
         `);
     });
@@ -190,6 +195,14 @@ contract("Concurrent STO", accounts => {
             ]);
             const dummyBytesSig = encodeModuleCall(DummySTOParameters, [startTime, endTime, cap, "Hello"]);
             const presaleBytesSig = encodeModuleCall(PresaleSTOParameters, [endTime]);
+            const actusBytesSig = encodeModuleCall(ActusSTOParameters, [
+                startTime,
+                endTime,
+                cap,
+                rate,
+                fundRaiseType,
+                account_fundsReceiver
+            ]);
 
             for (var STOIndex = 0; STOIndex < MAX_MODULES; STOIndex++) {
                 await I_PolyToken.getTokens(STOSetupCost, account_issuer);
@@ -234,6 +247,19 @@ contract("Concurrent STO", accounts => {
                         );
                         I_STO_Array.push(PreSaleSTO.at(tx3.logs[3].args._module));
                         break;
+                    case 3:
+                        // ACTUS STO
+                        let tx4 = await I_SecurityToken.addModule(I_ActusSTOFactory.address, actusBytesSig, maxCost, budget, {
+                            from: account_issuer
+                        });
+                        assert.equal(tx4.logs[3].args._types[0], stoKey, `Wrong module type added at index ${STOIndex}`);
+                        assert.equal(
+                            web3.utils.hexToString(tx4.logs[3].args._name),
+                            "ActusSTO",
+                            `Wrong STO module added at index ${STOIndex}`
+                        );
+                        I_STO_Array.push(ActusSTO.at(tx4.logs[3].args._module));
+                        break;
                 }
             }
         });
@@ -273,6 +299,15 @@ contract("Concurrent STO", accounts => {
                             (await I_STO_Array[STOIndex].investors.call(account_investor1)).dividedBy(new BigNumber(10).pow(18)).toNumber(),
                             1000
                         );
+                        break;
+                    case 3:
+                        // ACTUS STO ETH
+                        await I_STO_Array[STOIndex].buyTokens(account_investor1, {
+                            from: account_investor1,
+                            value: web3.utils.toWei("1", "ether")
+                        });
+                        assert.equal(web3.utils.fromWei((await I_STO_Array[STOIndex].getRaised.call(0)).toString()), 1);
+                        assert.equal(await I_STO_Array[STOIndex].investorCount.call(), 1);
                         break;
                 }
             }
