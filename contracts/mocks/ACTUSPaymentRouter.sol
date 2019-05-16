@@ -26,6 +26,6 @@ contract ACTUSPaymentRouter is IACTUSPaymentRouter {
         external
         payable
     {
-        // require(assetId != bytes32(0) && cashflowId != int8(0), "INVALID_CONTRACTID_OR_CASHFLOWID");
+        require(assetId != bytes32(0) && cashflowId != int8(0), "INVALID_CONTRACTID_OR_CASHFLOWID");
     }
 }
