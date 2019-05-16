@@ -5,8 +5,10 @@ import { encodeModuleCall } from "./helpers/encodeCall";
 import { setUpPolymathNetwork, deployGPMAndVerifyed, deployDummySTOAndVerifyed } from "./helpers/createInstances";
 import { catchRevert } from "./helpers/exceptions";
 
+const ACTUSPaymentRouter = artifacts.require("./ACTUSPaymentRouter.sol");
 const ActusSTOFactory = artifacts.require("./ActusSTOFactory.sol");
 const ActusSTO = artifacts.require("./ActusSTO.sol");
+const ActusSTOObligor = artifacts.require("./ActusSTOObligor.sol");
 const DummySTO = artifacts.require("./DummySTO.sol");
 const SecurityToken = artifacts.require("./SecurityToken.sol");
 const GeneralTransferManager = artifacts.require("./GeneralTransferManager");
@@ -60,6 +62,7 @@ contract("ActusSTO", accounts => {
     let I_PolymathRegistry;
     let I_STRProxied;
     let I_MRProxied;
+    let I_ACTUSPaymentRouter;
     let pauseTime;
 
     // SecurityToken Details for funds raise Type ETH
@@ -148,6 +151,8 @@ contract("ActusSTO", accounts => {
         await I_MRProxied.registerModule(I_ActusSTOFactory.address, { from: account_polymath });
         await I_MRProxied.verifyModule(I_ActusSTOFactory.address, true, { from: account_polymath });
 
+        I_ACTUSPaymentRouter = await ACTUSPaymentRouter.new();
+
         // Printing all the contract addresses
         console.log(`
         --------------------- Polymath Network Smart Contracts: ---------------------
@@ -163,6 +168,11 @@ contract("ActusSTO", accounts => {
         GeneralPermissionManagerFactory:   ${I_GeneralPermissionManagerFactory.address}
 
         ActusSTOFactory:                  ${I_ActusSTOFactory.address}
+        -----------------------------------------------------------------------------
+        
+
+        --------------------- ACTUS Protocol Smart Contracts: ---------------------
+        ACTUSPaymentRouter:                  ${I_ACTUSPaymentRouter.address}
         -----------------------------------------------------------------------------
         `);
     });
@@ -309,40 +319,31 @@ contract("ActusSTO", accounts => {
     describe("Buy tokens", async () => {
         it("Should buy the tokens -- failed due to startTime is greater than Current time", async () => {
             await catchRevert(
-                I_ActusSTO_Array_ETH[0].buyTokens(
-                    account_investor1,
-                    {
-                        from: account_investor1,
-                        gas: 2100000,
-                        value: web3.utils.toWei("1", "ether")
-                    }
-                )
+                web3.eth.sendTransaction({
+                    from: account_investor1,
+                    to: I_ActusSTO_Array_ETH[0].address,
+                    value: web3.utils.toWei("1", "ether")
+                })
             );
         });
 
         it("Should buy the tokens -- failed due to invested amount is zero", async () => {
             await catchRevert(
-                I_ActusSTO_Array_ETH[0].buyTokens(
-                    account_investor1,
-                    {
-                        from: account_investor1,
-                        gas: 2100000,
-                        value: web3.utils.toWei("0", "ether")
-                    }
-                )
+                web3.eth.sendTransaction({
+                    from: account_investor1,
+                    to: I_ActusSTO_Array_ETH[0].address,
+                    value: web3.utils.toWei("0", "ether")
+                })
             );
         });
 
         it("Should buy the tokens -- Failed due to investor is not in the whitelist", async () => {
             await catchRevert(
-                I_ActusSTO_Array_ETH[0].buyTokens(
-                    account_investor1,
-                    {
-                        from: account_investor1,
-                        gas: 2100000,
-                        value: web3.utils.toWei("1", "ether")
-                    }
-                )
+                web3.eth.sendTransaction({
+                    from: account_investor1,
+                    to: I_ActusSTO_Array_ETH[0].address,
+                    value: web3.utils.toWei("1", "ether")
+                })
             );
         });
 
@@ -355,7 +356,8 @@ contract("ActusSTO", accounts => {
             P_toTime = P_fromTime + duration.days(50);
             P_expiryTime = toTime + duration.days(100);
 
-            balanceOfPrincipalEscrow = await web3.eth.getBalance(I_ActusSTO_Array_ETH[0].address);
+            const I_ActusSTOObligorAddress = await I_ActusSTO_Array_ETH[0].obligor()
+            balanceOfPrincipalEscrow = await web3.eth.getBalance(I_ActusSTOObligorAddress);
             // Add the Investor in to the whitelist
 
             let tx = await I_GeneralTransferManager.modifyWhitelist(account_investor1, fromTime, toTime, expiryTime, true, {
@@ -366,15 +368,13 @@ contract("ActusSTO", accounts => {
 
             // Jump time
             await increaseTime(duration.days(1));
-            // buy tokens
-            await I_ActusSTO_Array_ETH[0].buyTokens(
-                account_investor1,
-                {
-                    from: account_investor1,
-                    gas: 2100000,
-                    value: web3.utils.toWei("1", "ether")
-                }
-            );
+            // Fallback transaction
+            await web3.eth.sendTransaction({
+                from: account_investor1,
+                to: I_ActusSTO_Array_ETH[0].address,
+                gas: 2100000,
+                value: web3.utils.toWei("1", "ether")
+            });
 
             assert.equal((await I_ActusSTO_Array_ETH[0].getRaised.call(ETH)).dividedBy(new BigNumber(10).pow(18)).toNumber(), 1);
             assert.equal(await I_ActusSTO_Array_ETH[0].investorCount.call(), 1);
@@ -408,14 +408,12 @@ contract("ActusSTO", accounts => {
 
         it("Should fail to buy the tokens after pausing the STO", async () => {
             await catchRevert(
-                I_ActusSTO_Array_ETH[0].buyTokens(
-                    account_investor1,
-                    {
-                        from: account_investor1,
-                        gas: 2100000,
-                        value: web3.utils.toWei("1", "ether")
-                    }
-                )
+                web3.eth.sendTransaction({
+                    from: account_investor1,
+                    to: I_ActusSTO_Array_ETH[0].address,
+                    gas: 2100000,
+                    value: web3.utils.toWei("1", "ether")
+                })
             );
         });
 
@@ -452,14 +450,13 @@ contract("ActusSTO", accounts => {
         });
 
         it("Should restrict to buy tokens after hiting the cap in second tx first tx pass", async () => {
-            await I_ActusSTO_Array_ETH[0].buyTokens(
-                account_investor2,
-                {
-                    from: account_investor2,
-                    gas: 2100000,
-                    value: web3.utils.toWei("8", "ether")
-                }
-            );
+            // Fallback transaction
+            await web3.eth.sendTransaction({
+                from: account_investor2,
+                to: I_ActusSTO_Array_ETH[0].address,
+                gas: 2100000,
+                value: web3.utils.toWei("8", "ether")
+            });
 
             assert.equal((await I_ActusSTO_Array_ETH[0].getRaised.call(ETH)).dividedBy(new BigNumber(10).pow(18)).toNumber(), 10);
 
@@ -470,7 +467,9 @@ contract("ActusSTO", accounts => {
         });
 
         it("Should fundRaised value equal to the raised value in the funds receiver wallet", async () => {
-            const newBalance = await web3.eth.getBalance(I_ActusSTO_Array_ETH[0].address);
+            const I_ActusSTOObligorAddress = await I_ActusSTO_Array_ETH[0].obligor();
+
+            const newBalance = await web3.eth.getBalance(I_ActusSTOObligorAddress);
             // console.log("WWWW",newBalance,await I_ActusSTO.fundsRaised.call(),balanceOfPrincipalEscrow);
             let op = new BigNumber(newBalance)
                 .minus(balanceOfPrincipalEscrow)
@@ -566,8 +565,6 @@ contract("ActusSTO", accounts => {
 
         it("Should successfully whitelist investor 3", async () => {
             balanceOfPrincipalEscrow = await web3.eth.getBalance(I_ActusSTO_Array_ETH[1].address);
-
-            console.log(account_investor3)
 
             let tx = await I_GeneralTransferManager.modifyWhitelist(account_investor3, fromTime, toTime, expiryTime, true, {
                 from: account_issuer,
@@ -772,14 +769,13 @@ contract("ActusSTO", accounts => {
 
             it("Should failed to buy tokens -- because fundraisetype is POLY not ETH", async () => {
                 await catchRevert(
-                    I_ActusSTO_Array_ETH[0].buyTokens(
-                        account_investor1,
-                        {
-                            from: account_investor1,
-                            gas: 2100000,
-                            value: web3.utils.toWei("2", "ether")
-                        }
-                    )
+                    // Fallback transaction
+                    web3.eth.sendTransaction({
+                        from: account_investor1,
+                        to: I_ActusSTO_Array_POLY[0].address,
+                        gas: 2100000,
+                        value: web3.utils.toWei("2", "ether")
+                    })
                 );
             });
 
@@ -810,7 +806,7 @@ contract("ActusSTO", accounts => {
                         gas: 500000
                     }
                 );
-                console.log((await I_SecurityToken_POLY.balanceOf(account_investor2)).dividedBy(new BigNumber(10).pow(18)).toNumber());
+                // console.log((await I_SecurityToken_POLY.balanceOf(account_investor2)).dividedBy(new BigNumber(10).pow(18)).toNumber());
                 assert.equal(tx.logs[0].args._investor, account_investor2, "Failed in adding the investor in whitelist");
                 await I_PolyToken.getTokens(10000 * Math.pow(10, 18), account_investor2);
                 await I_PolyToken.approve(I_ActusSTO_Array_POLY[0].address, 9000 * Math.pow(10, 18), { from: account_investor2 });
@@ -852,7 +848,8 @@ contract("ActusSTO", accounts => {
             });
 
             it("Should fundRaised value equal to the raised value in the funds receiver wallet", async () => {
-                const balanceRaised = await I_PolyToken.balanceOf.call(I_ActusSTO_Array_POLY[0].address);
+                const I_ActusSTOObligorAddress = await I_ActusSTO_Array_POLY[0].obligor()
+                const balanceRaised = await I_PolyToken.balanceOf.call(I_ActusSTOObligorAddress);
                 assert.equal(
                     (await I_ActusSTO_Array_POLY[0].getRaised.call(POLY)).toNumber(),
                     balanceRaised,
@@ -1087,6 +1084,44 @@ contract("ActusSTO", accounts => {
                 (await I_SecurityToken_POLY.balanceOf(account_investor3)).dividedBy(new BigNumber(10).pow(18)).toNumber(),
                 stToReceive
             );
+        });
+    });
+    describe("Link asset to ACTUS STO", async () => {
+        it("Should link asset to ActusSTO", async () => {
+            const assetId = "ACTUS_ASSET_01234";
+            const I_ActusSTOObligor = await ActusSTOObligor.at(await I_ActusSTO_Array_ETH[0].obligor());
+
+            await I_ActusSTO_Array_ETH[0].linkAsset(web3.utils.toHex(assetId), I_ACTUSPaymentRouter.address, { from: account_issuer });
+
+            assert.equal(
+                web3.utils.hexToString(await I_ActusSTOObligor.assetId()),
+                assetId
+            );
+            assert.equal(
+                await I_ActusSTOObligor.paymentRouter(),
+                I_ACTUSPaymentRouter.address
+            );
+            assert.equal(
+                await I_ActusSTOObligor.isAssetLinked(),
+                true
+            );
+        });
+    });
+    describe("Pay principal with funds held in escrow", async () => {
+        it("Should pay principal", async () => {
+            const I_ActusSTOObligorAddress = await I_ActusSTO_Array_ETH[0].obligor()
+            balanceOfPrincipalEscrow = await web3.eth.getBalance(I_ActusSTOObligorAddress)
+
+            assert.equal(
+                await I_ActusSTO_Array_ETH[0].capReached(),
+                true
+            );
+
+            await I_ActusSTO_Array_ETH[0].payPrincipal();
+
+            const balanceOfPaymentRouter = await web3.eth.getBalance(I_ACTUSPaymentRouter.address)
+
+            assert.equal(balanceOfPrincipalEscrow, balanceOfPaymentRouter);
         });
     });
 });
