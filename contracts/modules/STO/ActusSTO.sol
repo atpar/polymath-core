@@ -1,7 +1,6 @@
 pragma solidity ^0.4.24;
 
-import "../../interfaces/IACTUSPaymentRouter.sol";
-
+import "./ActusSTOObligor.sol";
 import "./CappedSTO.sol";
 
 
@@ -10,25 +9,15 @@ import "./CappedSTO.sol";
  */
 contract ActusSTO is CappedSTO {
 
-
-    // ACTUS protocol related
-    int8 constant PRINCIPAL_CASHFLOW_ID = -4;
-    uint256 constant PRINCIPAL_EVENT_ID = 0;
-
-    bytes32 assetId;
-    address paymentRouter;
+    ActusSTOObligor public obligor;
 
 
     constructor(address _securityToken, address _polyAddress)
         CappedSTO(_securityToken, _polyAddress)
         public
     {
+        obligor = new ActusSTOObligor();
     }
-
-    /**
-     * (overridden function)
-     */
-    function () external payable {}
 
     /**
      * @notice Function used to intialize the contract variables (overridden function)
@@ -48,10 +37,7 @@ contract ActusSTO is CappedSTO {
         public
         onlyFactory
     {
-        super.configure(_startTime, _endTime, _cap, _rate, _fundRaiseTypes, address(this));
-
-        // pause STO until an ACTUS is linked to the STO (buyer protection)
-        // super.pause();
+        super.configure(_startTime, _endTime, _cap, _rate, _fundRaiseTypes, address(obligor));
     }
 
     /**
@@ -66,34 +52,15 @@ contract ActusSTO is CappedSTO {
      * @param _assetId id of the ACTUS asset
      */
     function linkAsset(bytes32 _assetId, address _paymentRouter) external onlyOwner {
-        require(assetId == bytes32(0), "ActusSTO.linkAsset: STO is already linked with asset.");
+        require(obligor.isAssetLinked() == false, "ActusSTO.linkAsset: STO is already linked with asset.");
 
-        assetId = _assetId;
-        paymentRouter = _paymentRouter;
-
-        // super.unpause();
+        obligor.linkAsset(_assetId, _paymentRouter);
     }
 
-    /**
-     * @notice pay principal for the linked ACTUS asset (anyone should be able to call this method)
-     */
     function payPrincipal() external payable {
-        require(isAssetLinked(), "ActusSTO.payPrincipal: STO is not linked to any asset.");
-        require(capReached(), "ActusSTO.payPrincipal: Cap not reached yet");
+        require(obligor.isAssetLinked(), "ActusSTO.finalize: STO is not linked to any asset.");
+        require(capReached(), "ActusSTO.finalize: Cap not reached yet.");
 
-        IACTUSPaymentRouter(paymentRouter).settlePayment.value(cap)(
-            assetId,
-            PRINCIPAL_CASHFLOW_ID,
-            PRINCIPAL_EVENT_ID,
-            address(0),
-            cap
-        );
-    }
-
-    /**
-     * @notice Checks wether the STO is linked to an ACTUS asset
-     */
-    function isAssetLinked() public view returns (bool) {
-        return (assetId != bytes32(0) && paymentRouter != address(0));
+        obligor.payPrincipal();
     }
 }
