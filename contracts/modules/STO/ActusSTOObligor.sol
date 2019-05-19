@@ -11,8 +11,8 @@ contract ActusSTOObligor {
     address public actusSTO;
 
     // ACTUS protocol related
-    int8 constant PRINCIPAL_CASHFLOW_ID = -4;
-    uint256 constant PRINCIPAL_EVENT_ID = 0;
+    int8 constant PRINCIPAL_CASHFLOW_ID = 4;
+    uint256 constant PRINCIPAL_EVENT_ID = 1;
 
     bytes32 public assetId;
     address public paymentRouter;
